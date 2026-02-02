@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>melis & bugra</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* Fotoğraf tıklandığında açılan pencere (Modal) */
+#modalContent {
+    max-width: 85%;     /* Ekranın %85'inden fazla genişlemesin */
+    max-height: 80vh;   /* Ekran yüksekliğinin %80'ini geçmesin */
+    width: auto;        /* Kendi oranını korusun */
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+    border: 3px solid white; /* Fotoğraf etrafına şık bir çerçeve */
+}
+        /* Anılar kısmındaki fotoğrafların boyutu */
+.item-card img {
+    width: 100%;        /* Kartın genişliğine uysun */
+    max-height: 150px;  /* Yüksekliği sınırla, çok yer kaplamasın */
+    object-fit: cover;  /* Fotoğrafı bozmadan sığdır */
+    border-radius: 8px; /* Köşeleri yumuşat */
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.item-card img:hover {
+    transform: scale(1.02); /* Üzerine gelince çok hafif büyüsün */
+}
+       .admin-delete-btn {
+    display: none !important;
+}
+/* Çarpı butonları normalde gizli */
+.admin-delete-btn {
+        position: absolute !important;
+        top: 5px !important;
+    left: 5px !important;
+    z-index: 9999 !important;
+    background: #ef4444 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 50% !important;
+    width: 22px !important;
+    height: 22px !important;
+    cursor: pointer !important;
+    display: none !important; /* GİZLİ */
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: bold !important;
+}
+
+/* Sadece admin modu açılınca çarpıları göster */
+body.admin-active .admin-delete-btn {
+    display: flex !important;
+}
+
+/* Kutuların konumunu ayarla */
+.msg, .item-card, .mem-bubble { position: relative !important; }
+    .memory-card {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    margin-top: 20px;
+}
+
+.memory-stream {
+    max-height: 600px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column; /* Tekli sıra için */
+    gap: 20px;
+    padding: 10px;
+}
+
+.mem-bubble {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%; /* Tam genişlik */
+    box-sizing: border-box;
+}
+
+.mem-img { 
+    width: 100%; 
+    height: auto; /* Kare zorunluluğunu kaldırdık, orijinal boyutunda şık durur */
+    border-radius: 10px; 
+    cursor: pointer; 
+}
+
+/* Kimin gönderdiğine göre küçük bir renk farkı */
+.mem-melis { border-bottom: 3px solid #f43f5e; }
+.mem-bugra { border-bottom: 3px solid #3b82f6; }
+
+.mem-img { 
+    width: 100%; 
+    aspect-ratio: 1 / 1; /* Fotoğrafları kare yapar, daha düzenli durur */
+    object-fit: cover; 
+    border-radius: 8px; 
+    cursor: pointer; 
+}
+
+.mem-footer {
+    margin-top: 8px;
+    font-size: 10px;
+}
+
+.mem-user-name {
+    font-weight: bold;
+    display: block;
+    color: #e2e8f0;
+}
+
+.mem-text {
+    font-size: 12px;
+    color: #cbd5e1;
+    margin: 4px 0;
+    word-break: break-word;
+}
+
+.mem-time {
+    color: #64748b;
+    font-size: 9px;
+}
+
+.mem-melis { align-self: flex-start; border-left: 4px solid #f43f5e; }
+.mem-bugra { align-self: flex-end; border-right: 4px solid #3b82f6; text-align: right; }
+
+.mem-info { font-size: 11px; color: #94a3b8; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }
+.mem-date { font-size: 9px; color: #64748b; margin-top: 5px; }
+.mem-img { width: 100%; border-radius: 10px; margin-top: 5px; cursor: pointer; transition: 0.3s; }
+.mem-img:hover { opacity: 0.8; }
+        body { background: #0f172a; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .hidden { display: none; }
+        
+        #identityOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .identity-card { background: #1e293b; padding: 40px; border-radius: 30px; box-shadow: 0 15px 35px rgba(0,0,0,0.5); text-align: center; border: 1px solid #334155; max-width: 450px; }
+        .identity-btn { width: 200px; padding: 15px; margin: 10px; border: none; border-radius: 15px; font-weight: bold; cursor: pointer; font-size: 1.1rem; transition: 0.3s; color: white; }
+        .btn-melis { background: #ec4899; }
+        .btn-bugra { background: #3b82f6; }
+        .identity-btn:hover { transform: translateY(-5px); filter: brightness(1.2); }
+
+        #terminal { font-family: monospace; background: black; padding: 25px; border-radius: 15px; text-align: left; width: 100%; max-width: 600px; margin-top: 50px; border: 1px solid #1e293b; color: #10b981; line-height: 1.6; }
+
+        .birthday-container { display: flex; justify-content: space-between; width: 100%; max-width: 1100px; margin-bottom: 25px; gap: 20px; }
+        .bday-box { flex: 1; background: rgba(30, 41, 59, 0.7); padding: 15px; border-radius: 20px; text-align: center; border: 1px solid #334155; position: relative; }
+        
+        .melis-special { border: 1px solid #ec4899; background: linear-gradient(145deg, #1e293b, #251628); }
+        .melis-special h4 { color: #f472b6; margin: 0; font-size: 0.85rem; letter-spacing: 1px; }
+        .glow-text { color: #ec4899; font-weight: bold; animation: softGlow 3s ease-in-out infinite alternate; }
+        
+        @keyframes softGlow {
+            from { text-shadow: 0 0 2px #fff, 0 0 5px #ec4899; }
+            to { text-shadow: 0 0 4px #fff, 0 0 10px #ec4899; }
+        }
+
+        .bugra-box h4 { color: #60a5fa; margin: 0; font-size: 0.85rem; letter-spacing: 1px; }
+        .timer-val { font-size: 1.3rem; font-weight: bold; display: block; margin-top: 5px; }
+
+        .mood-section { margin-bottom: 35px; text-align: center; width: 100%; }
+        .mood-container { display: flex; justify-content: center; gap: 25px; flex-wrap: wrap; }
+        .mood-wrapper { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 70px; }
+        .mood-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
+        .mood-btn { cursor: pointer; font-size: 2.2rem; filter: grayscale(100%); transition: 0.3s; padding: 5px; }
+        .mood-btn.active { filter: grayscale(0%); transform: scale(1.2); }
+        .user-tag { font-size: 0.7rem; font-weight: bold; margin-top: 5px; min-height: 18px; display: flex; gap: 5px; }
+        .tag-e { color: #ec4899; }
+        .tag-m { color: #3b82f6; }
+
+        .main-panel { display: flex; gap: 20px; width: 100%; max-width: 1400px; justify-content: center; flex-wrap: wrap; }
+        .column-box { flex: 1; min-width: 300px; background: #1e293b; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid #334155; display: flex; flex-direction: column; }
+
+        h3 { margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 10px; text-align: center; }
+        input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; margin-bottom: 10px; box-sizing: border-box; }
+        .btn { border: none; padding: 10px; color: white; border-radius: 10px; width: 100%; font-weight: bold; cursor: pointer; }
+        
+        .scroll-area { flex-grow: 1; max-height: 250px; overflow-y: auto; margin-top: 10px; }
+        .item-card { background: #0f172a; padding: 10px; border-radius: 10px; margin-bottom: 8px; font-size: 0.85rem; border-left: 3px solid #3b82f6; transition: 0.2s; }
+        
+        .spotify-slot { background: #0f172a; border-radius: 12px; padding: 5px; margin-bottom: 10px; border: 1px solid #334155; cursor: pointer; }
+        .slot-label { font-size: 0.65rem; font-weight: bold; margin-left: 5px; margin-bottom: 3px; display: block; }
+        .song-history-item { font-size: 0.75rem; padding: 8px; border-bottom: 1px solid #334155; cursor: pointer; color: #94a3b8; }
+        .admin-trigger { position: fixed; bottom: 0; right: 0; width: 30px; height: 30px; cursor: pointer; opacity: 0; z-index: 9999; }
+        
+        #welcome-text { color: #94a3b8; font-style: italic; margin-bottom: 15px; font-size: 0.9rem; line-height: 1.4; }
+
+        .chat-container { display: flex; flex-direction: column; height: 350px; }
+        .chat-messages { flex-grow: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: #0f172a; border-radius: 10px; margin-bottom: 10px; }
+        .msg { max-width: 80%; padding: 8px 12px; border-radius: 15px; font-size: 0.85rem; position: relative; }
+        .msg-melis { align-self: flex-start; background: #ec4899; color: white; border-bottom-left-radius: 2px; }
+        .msg-bugra { align-self: flex-end; background: #3b82f6; color: white; border-bottom-right-radius: 2px; }
+        .chat-input-row { display: flex; gap: 5px; position: relative; }
+        .quick-msg-btn { background: #334155; border: none; color: white; border-radius: 50%; width: 40px; height: 40px; cursor: pointer; font-size: 1.5rem; }
+        .quick-menu { position: absolute; bottom: 50px; left: 0; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 10px; display: none; grid-template-columns: repeat(2, 1fr); gap: 5px; z-index: 100; width: 250px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .quick-item { font-size: 0.75rem; padding: 5px; background: #0f172a; border-radius: 5px; cursor: pointer; text-align: center; }
+        .quick-item:hover { background: #334155; }
+
+        #map { height: 400px; border-radius: 20px; border: 1px solid #334155; margin-top: 25px; width: 100%; max-width: 1200px; z-index: 1; }
+        .beating-heart { display: inline-block; animation: heartBeat 1.2s infinite; font-size: 26px; filter: drop-shadow(0 0 5px red); }
+        @keyframes heartBeat { 0% { transform: scale(1); } 15% { transform: scale(1.3); } 30% { transform: scale(1); } }
+        .map-label { background: rgba(15, 23, 42, 0.9); border: 1px solid #3b82f6; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-top: 5px; display: inline-block; }
+.love-card-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin: 20px 0 30px 0;
+}
+
+.love-card {
+    background: linear-gradient(135deg, #db2777 0%, #ec4899 50%, #f472b6 100%);
+    padding: 25px 50px;
+    border-radius: 50px;
+    box-shadow: 0 0 25px rgba(236, 72, 153, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    min-width: 350px;
+    text-align: center;
+    animation: floating 3s infinite ease-in-out;
+}
+
+.love-card:active { transform: scale(0.95); }
+
+.love-content {
+    color: white;
+    font-weight: bold;
+    font-size: 1.2rem;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    transition: opacity 0.3s;
+}
+
+.star-decor {
+    position: absolute;
+    color: white;
+    opacity: 0.6;
+    font-size: 14px;
+    animation: blink 2s infinite;
+}
+
+@keyframes floating {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; scale: 1; }
+    50% { opacity: 0.3; scale: 1.3; }
+}
+.note-melis { border-left: 5px solid #ec4899 !important; background: rgba(236, 72, 153, 0.1) !important; }
+.note-bugra { border-left: 5px solid #3b82f6 !important; background: rgba(59, 130, 246, 0.1) !important; }
+    </style>
+</head>
+<body>
+
+    <div id="identityOverlay">
+        <div class="identity-card">
+            <h2 id="love-title" style="margin-bottom: 10px; color: #94a3b8;">Hoş Geldin</h2>
+            <p id="welcome-text">Lütfen profilini seçerek başla...</p>
+            <button class="identity-btn btn-melis" onclick="setUser('melis')">melis</button>
+            <button class="identity-btn btn-bugra" onclick="setUser('bugra')">buğra</button>
+        </div>
+    </div>
+    <div onclick="adminSisteminiAc()" style="position:fixed; bottom:0; right:0; width:40px; height:40px; cursor:pointer; z-index:1000000; background:transparent;"></div>
+
+    <div id="step1" class="hidden" style="text-align:center; margin-top:100px;">
+        <h1 style="letter-spacing: 3px;">melis & bugra</h1>
+        <button class="btn" style="width:180px; background:#3b82f6;" onclick="startReset()">SİSTEME GİR</button>
+    </div>
+
+    <div id="terminal" class="hidden"></div>
+
+    <div id="step3" class="hidden" style="width:100%; max-width:1400px;">
+        
+       <div class="birthday-container">
+    <div class="bday-box melis-special">
+        <h4>🐺 melis'İN DOĞUM GÜNÜ 🐺</h4>
+        <span id="melisTimer" class="timer-val glow-text">-- : -- : -- : --</span>
+        <div id="weather-melis" class="weather-box">
+            <div id="weather-melis-main" style="font-weight: bold; color: #ec4899;"></div>
+            <div id="weather-melis-desc" style="color: #94a3b8; font-size: 0.7rem;"></div>
+        </div>
+    </div>
+
+    <div class="bday-box bugra-box">
+        <h4>🐂 buğra'İN DOĞUM GÜNÜ 🐂</h4>
+        <span id="bugraTimer" class="timer-val" style="color:#3b82f6;">-- : -- : -- : --</span>
+        <div id="weather-bugra" class="weather-box">
+            <div id="weather-bugra-main" style="font-weight: bold; color: #3b82f6;"></div>
+            <div id="weather-bugra-desc" style="color: #94a3b8; font-size: 0.7rem;"></div>
+        </div>
+    </div>
+</div>
+
+<div class="love-card-wrapper">
+    <div class="love-card" onclick="sendLoveClick()">
+        <div class="love-content">
+            <span class="sparkle">✨</span>
+            <span id="love-text-display">Kalbimizden Bir Parça... ❤️</span>
+            <span class="sparkle">✨</span>
+        </div>
+        <div id="love-stats" style="font-size: 0.75rem; margin-top: 10px; color: white; opacity: 0.9; font-weight: normal;">
+        </div>
+        <div class="star-decor" style="top:10%; left:5%;">★</div>
+        <div class="star-decor" style="bottom:10%; right:5%;">★</div>
+    </div>
+</div>
+
+<div class="mood-section">
+            <div class="mood-container">
+                <div class="mood-wrapper"><span class="mood-label">Kahve</span><span class="mood-btn" id="m-coffee" onclick="selectMood('coffee')">☕</span><div class="user-tag" id="tag-coffee"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Oyun</span><span class="mood-btn" id="m-game" onclick="selectMood('game')">🎮</span><div class="user-tag" id="tag-game"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Uyku</span><span class="mood-btn" id="m-sleep" onclick="selectMood('sleep')">😴</span><div class="user-tag" id="tag-sleep"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Mutlu</span><span class="mood-btn" id="m-happy" onclick="selectMood('happy')">😊</span><div class="user-tag" id="tag-happy"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Ders</span><span class="mood-btn" id="m-study" onclick="selectMood('study')">📚</span><div class="user-tag" id="tag-study"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Müzik</span><span class="mood-btn" id="m-music" onclick="selectMood('music')">🎧</span><div class="user-tag" id="tag-music"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Yorgun</span><span class="mood-btn" id="m-tired" onclick="selectMood('tired')">😫</span><div class="user-tag" id="tag-tired"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Dışarda</span><span class="mood-btn" id="m-out" onclick="selectMood('out')">☁️</span><div class="user-tag" id="tag-out"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Yemek</span><span class="mood-btn" id="m-food" onclick="selectMood('food')">🍕</span><div class="user-tag" id="tag-food"></div></div>
+                <div class="mood-wrapper"><span class="mood-label">Dizi</span><span class="mood-btn" id="m-movie" onclick="selectMood('movie')">🎬</span><div class="user-tag" id="tag-movie"></div></div>
+            </div>
+        </div>
+
+        <div class="main-panel">
+            <div class="column-box">
+                <h3>🎵 Şarkı Paylaşımı</h3>
+                <div id="streakDisplay" style="background:#334155; color:white; border-radius:20px; padding:4px 12px; font-weight:bold; font-size:0.8rem; align-self:center; margin-bottom:15px;">Güncel Seri 🔥 3</div>
+                <span class="slot-label" style="color:#ec4899;">melis</span>
+                <div id="spotify-melis" class="spotify-slot" onclick="copySong('melis')">Henüz şarkı eklenmedi.</div>
+                <span class="slot-label" style="color:#3b82f6;">buğra</span>
+                <div id="spotify-bugra" class="spotify-slot" onclick="copySong('bugra')">Henüz şarkı eklenmedi.</div>
+                <input type="text" id="songInput" placeholder="Spotify Linki Yapıştır...">
+                <button class="btn" style="background:#1db954;" onclick="updateSong()">Paylaş</button>
+                <div class="scroll-area" id="songHistory" style="max-height: 100px;"></div>
+            </div>
+
+            <div class="column-box">
+                <h3>💬 Sohbet</h3>
+          <div class="chat-container">
+                    <div class="chat-messages" id="chatBox"></div>
+                    <div class="chat-input-row">
+                        <button class="quick-msg-btn" onclick="toggleQuickMenu()">+</button>
+                        <div class="quick-menu" id="quickMenu">
+                            <div class="quick-item" onclick="sendQuick('Günaydınn ☀️')">Günaydın ☀️</div>
+                            <div class="quick-item" onclick="sendQuick('İyi geceler ✨')">İyi geceler ✨</div>
+                            <div class="quick-item" onclick="sendQuick('Naber? 😊')">Naber? 😊</div>
+                            <div class="quick-item" onclick="sendQuick('Seni seviyorum ❤️')">Seni seviyorum ❤️</div>
+                            <div class="quick-item" onclick="sendQuick('Özledim.. 🥺')">Özledim.. 🥺</div>
+                            <div class="quick-item" onclick="sendQuick('Müsait misin?')">Müsait misin?</div>
+                            <div class="quick-item" onclick="sendQuick('Arayayım mı? 📞')">Arayayım mı? 📞</div>
+                            <div class="quick-item" onclick="sendQuick('Yemek yiyorum 🍕')">Yemek yiyorum 🍕</div>
+                            <div class="quick-item" onclick="sendQuick('Dışarı çıkıyorum ☁️')">Dışarı çıkıyorum ☁️</div>
+                            <div class="quick-item" onclick="sendQuick('Eve geldim ✅')">Eve geldim ✅</div>
+                            <div class="quick-item" onclick="sendQuick('Uykum geldi 😴')">Uykum geldi 😴</div>
+                            <div class="quick-item" onclick="sendQuick('Harika! 🌟')">Harika! 🌟</div>
+                            <div class="quick-item" onclick="sendQuick('Canım sıkıldı 😫')">Canım sıkıldı 😫</div>
+                            <div class="quick-item" onclick="sendQuick('Ders çalışıyorum 📚')">Ders çalışıyorum 📚</div>
+                            <div class="quick-item" onclick="sendQuick('Oyun oynuyorum 🎮')">Oyun oynuyorum 🎮</div>
+                            <div class="quick-item" onclick="sendQuick('Şarkı çok iyi! 🎧')">Şarkı çok iyi! 🎧</div>
+                            <div class="quick-item" onclick="sendQuick('Birazdan gelirim')">Birazdan gelirim</div>
+                            <div class="quick-item" onclick="sendQuick('Dikkat et kendine ❤️')">Dikkat et ❤️</div>
+                            <div class="quick-item" onclick="sendQuick('Ellerine sağlık 😋')">Eline sağlık 😋</div>
+                            <div class="quick-item" onclick="sendQuick('Görüşürüz 👋')">Görüşürüz 👋</div>
+                        </div>
+                        <input type="text" id="chatInput" placeholder="Mesaj yaz..." style="margin-bottom:0;" onkeypress="if(event.key==='Enter')sendChatMessage()">
+                        <button class="btn" style="background:#10b981; width:60px;" onclick="sendChatMessage()">></button>
+                    </div>
+                </div>
+            </div>
+
+           <div class="column-box">
+    <h3>📝 Ortak Notlar</h3>
+    <input type="text" id="noteInput" placeholder="Bir şeyler yaz..." onkeypress="if(event.key==='Enter')sendNote()">
+    <button class="btn" style="background:#3b82f6;" onclick="sendNote()">Gönder</button>
+    <div class="scroll-area" id="noteList"></div> 
+</div>
+
+            <div class="column-box">
+                <h3>📍 Planlar / Hedefler</h3>
+                <input type="text" id="bucketInput" placeholder="Yeni bir plan ekle...">
+                <button class="btn" style="background:#64748b;" onclick="addGoal()">Listeye Ekle</button>
+                <div class="scroll-area" id="bucketList"></div>
+            </div>
+        </div>
+  <div class="memory-card">
+    <h2 style="text-align:center; color: #f43f5e; margin-bottom:15px;">📸 Anı Akışı</h2>
+    
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 15px; margin-bottom: 20px;">
+        <input type="text" id="memoryDesc" placeholder="Açıklama (İsteğe bağlı)" style="width:100%; padding:10px; border-radius:8px; border:none; background:#0f172a; color:white; margin-bottom:8px; box-sizing: border-box;">
+        <input type="text" id="memoryLink" placeholder="Veya Fotoğraf URL'si yapıştır..." style="width:100%; padding:10px; border-radius:8px; border:none; background:#0f172a; color:white; margin-bottom:8px; box-sizing: border-box;">
+        
+        <div style="display:flex; gap:8px;">
+            <input type="file" id="memoryFile" accept="image/*" style="display:none;" onchange="updateFileName()">
+            <button onclick="document.getElementById('memoryFile').click()" style="flex:1; background:#334155; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; font-size:12px;">📁 Dosya</button>
+            <button onclick="saveMemory()" style="flex:1; background:#f43f5e; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">Gönder</button>
+        </div>
+        <p id="fileNameDisplay" style="font-size: 10px; color: #94a3b8; margin-top: 8px; text-align:center;">Dosya seçilmedi</p>
+    </div>
+
+<div id="memoryGallery" class="memory-stream"></div>
+</div>
+
+        <div class="memory-card">
+            <h2 style="text-align:center; color: #f43f5e; margin-bottom:15px;">📸 Anı Akışı</h2>
+            <div id="memoryGallery" class="memory-stream"></div>
+        </div>
+
+        <div id="map"></div>
+    </div> <div onclick="tamTemizlik()" style="position:fixed; bottom:0; right:0; width:50px; height:50px; cursor:pointer; z-index:999999; background:rgba(255,0,0,0.1); display:none;"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+       // ... Firebase ve JS kodların ...
+    </script>
+</body>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        
+        // Firebase Yapılandırması (Görselinden alınan bilgiler)
+const firebaseConfig = {
+  apiKey: "AIzaSyC-RE1KJF-YQptezFsCdL3M-P7H4cH2SYA",
+  authDomain: "melihx.firebaseapp.com",
+  databaseURL: "https://melihx-default-rtdb.firebaseio.com",
+  projectId: "melihx",
+  storageBucket: "melihx.firebasestorage.app",
+  messagingSenderId: "792501147254",
+  appId: "1:792501147254:web:f4ad3b9a5e72c608adf157",
+  measurementId: "G-YVT7PPL7ZQ"
+};
+
+// 1. Firebase Başlatma (Hata almamak için kontrol ekliyoruz)
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.database();
+
+// MESAJ GÖNDERME FONKSİYONU
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    // Senin dosyanın geri kalanına uyumlu olması için active_user kullanıyoruz
+    const user = localStorage.getItem('active_user'); 
+
+    if(!msg || !user) return;
+
+    db.ref('chats').push({
+        user: user,
+        msg: msg,
+        time: Date.now(),
+        clock: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    });
+    
+    input.value = "";
+}
+
+// Ortak Notları Güncelle (Renkli ve Çizgili Görünüm)
+db.ref('notes').on('value', (snapshot) => {
+    const noteList = document.getElementById('noteList');
+    if(!noteList) return;
+    noteList.innerHTML = "";
+    snapshot.forEach((child) => {
+        const data = child.val();
+        const key = child.key;
+        const div = document.createElement('div');
+        
+        // Kullanıcıya göre renk ve stil belirleme
+        const ismelis = data.user === 'melis';
+        const color = ismelis ? '#ec4899' : '#3b82f6'; // Pembe veya Mavi
+        const bgColor = ismelis ? 'rgba(236, 72, 153, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+
+        div.className = "item-card";
+        // Sol tarafa ince çizgi ve arka plan rengi ekliyoruz
+        div.style.borderLeft = `5px solid ${color}`;
+        div.style.background = bgColor;
+        div.style.marginBottom = "8px";
+        div.style.padding = "10px";
+        div.style.borderRadius = "8px";
+
+        div.innerHTML = `
+            <p style="margin: 0; color: white; font-weight: 500;">${data.mesaj}</p>
+            <div style="font-size:10px; color:${color}; margin-top:5px; font-weight: bold;">
+                👤 ${data.user.toUpperCase()} - 📅 ${data.tarih || new Date(data.time).toLocaleString('tr-TR')}
+            </div>
+        `;
+        noteList.appendChild(div);
+    });
+});
+
+// 3. ANILARI GÜNCELLE (Silme yeri eklenmiş hali)
+db.ref('memories').on('value', (snapshot) => {
+    const gallery = document.getElementById('gallery');
+    if(!gallery) return;
+    gallery.innerHTML = "";
+    snapshot.forEach((child) => {
+        const data = child.val();
+        const key = child.key;
+        const div = document.createElement('div');
+        div.className = "mem-bubble";
+        div.innerHTML = `
+            <button class="delete-item-btn" onclick="direktSil('memories', '${key}')">×</button>
+            <img src="${data.url}" style="width:100%; border-radius:12px; display:block;">
+            ${data.description ? `<p style="margin-top:8px; font-size:14px; color:white;">${data.description}</p>` : ''}
+        `;
+        gallery.appendChild(div);
+    });
+});
+
+// ... (Buradan sonra mevcut selectedUser, displayChats vb. fonksiyonların devam etmeli)
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztWFoHfh09KrtNWNBqO5axj0JjhPMVIcMacwnLH8tRwIoOEP-vuoHv2lJMdulSOi32Gw/exec";
+        let selectedUser = localStorage.getItem('active_user') || null;
+        let lastSyncData = "";
+        let mainMap = null;
+
+        window.onload = function() {
+    
+            if (selectedUser) {
+                document.getElementById('identityOverlay').classList.add('hidden');
+                document.getElementById('step1').classList.remove('hidden');
+                // Sayfa açılışında her şeyi yükle
+                displayChats();
+                displayLogs();
+                displayGoals();
+                loadSongs();
+                displaySongHistory();
+                updateMoodUI();
+                updateStreakUI();
+            }
+            startBirthdayTimers();
+
+        };        
+ async function updateWeather() {
+    const locations = {
+        // Bursa'daki tam konumlarınız
+        melis: { lat: 40.1855, lon: 29.0526, prefix: 'weather-melis' },
+        bugra: { lat: 40.1797, lon: 29.0547, prefix: 'weather-bugra' }
+    };
+
+    // WMO Hava Durumu Kodları ve Karşılık Gelen Semboller
+    const weatherCodes = {
+        0: { desc: "Açık", icon: "☀️" },
+        1: { desc: "Çoğunlukla Açık", icon: "🌤️" },
+        2: { desc: "Parçalı Bulutlu", icon: "⛅" },
+        3: { desc: "Bulutlu", icon: "☁️" },
+        45: { desc: "Sisli", icon: "🌫️" },
+        51: { desc: "Hafif Çiseleme", icon: "🌦️" },
+        61: { desc: "Yağmurlu", icon: "🌧️" },
+        63: { desc: "Yağmurlu", icon: "🌧️" },
+        80: { desc: "Sağanak Yağış", icon: "🌧️" },
+        95: { desc: "Fırtına", icon: "⚡" }
+    };
+
+    for (let person in locations) {
+        try {
+            const loc = locations[person];
+            // Anlık veriyi (current_weather=true) Bursa saatiyle çekiyoruz
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current_weather=true&timezone=auto`);
+            const data = await res.json();
+            
+            if (data && data.current_weather) {
+                const temp = Math.round(data.current_weather.temperature);
+                const code = data.current_weather.weathercode;
+                
+                // Gelen koda göre ikon ve açıklama seçimi (Yoksa varsayılan Bulutlu)
+                const info = weatherCodes[code] || { desc: "Bulutlu", icon: "☁️" };
+
+                // HTML'deki ilgili kutucuklara anlık veriyi basıyoruz
+                // Üst Satır: İkon ve Derece yan yana (☀️ 14°C)
+                const mainEl = document.getElementById(`${loc.prefix}-main`);
+                if (mainEl) {
+                    mainEl.innerHTML = `${info.icon} ${temp}°C`;
+                }
+
+                // Alt Satır: Hava Durumu Açıklaması (Açık, Bulutlu vb.)
+                const descEl = document.getElementById(`${loc.prefix}-desc`);
+                if (descEl) {
+                    descEl.innerHTML = info.desc;
+                }
+            }
+        } catch (e) {
+            console.error("Hava durumu canlı çekilemedi:", e);
+        }
+    }
+}
+function showLoveWord() {
+    const words = [
+        "Sen benim başıma gelen en güzel şeysin. ✨", "Kalbimin tek sahibi sensin. ❤️", "Gözlerinde dünyayı görüyorum. 🌍",
+        "Seni sevmek nefes almak gibi. 🌬️", "İyi ki varsın sevgilim. 🥰", "Ruhumun eşi sensin. 💍", "Sen benim mucizemsin. 🪄",
+        "Gülüşün dünyaya güneş gibi doğuyor. ☀️", "Sen benim evimsin. 🏡", "Hayatımın anlamı sensin. 🎯",
+        "Seni her gün bir öncekinden daha çok seviyorum. 📈", "Seninle geçen her saniye bir hazine. 💎",
+        "Ellerini hiç bırakmak istemiyorum. 🤝", "Sen benim şansımsın. 🍀", "Dünyadaki en güzel manzara senin yüzün. 🖼️",
+        "Sen benim en tatlı uykumsun. 💤", "Kalbimin her köşesi seninle dolu. 💖", "Seninle yaşlanmak tek hayalim. 👴👵",
+        "Bakışlarında kaybolmak istiyorum. 🌊", "Sen benim huzurumsun. 🧘", "Aşkımız sonsuz olsun. ♾️",
+        "Seninle her yer cennet bana. 🏝️", "Kalbim sadece senin için atıyor. 💓", "Sesin ruhuma en iyi gelen ilaç. 💊",
+        "Sen benim gökyüzündeki en parlak yıldızımsın. ⭐", "Varlığın bana güç veriyor. 💪", "Sana olan sevgim kelimelere sığmıyor. 📚",
+        "Sen benim en güzel rüyamın gerçeğe dönüşmüş halisin. 💭", "Aşkın beni her gün yeniden doğuruyor. 🐣",
+        "Seni düşünmeden geçen bir saniyem bile yok. ⏳", "Hayatımın tüm renkleri seninle geldi. 🌈",
+        "Sen benim kahramanımsın. 🦸‍♂️", "Yanında olduğum her an kendimi buluyorum. 🧩", "Aşkımız bir masal gibi. 📖",
+        "Sana sarılmak dünyadaki en güvenli yer. 🫂", "Kalbim seninle atıyor, seninle duracak. 🛑",
+        "Sen benim sonsuzluğumsun. 🌌", "Güzelliğin karşısında büyüleniyorum. 🤩", "Seninle her zorluk bir oyun gibi. 🎮",
+        "Sen benim dualarımın cevabısın. 🙏", "Aşkın içimde bir kor gibi yanıyor. 🔥", "Sen benim ruh eşimsin. 🔥",
+        "Dünyanın en şanslı insanıyım çünkü seninleyim. 🎰", "Sen benim yaşama sevincimsin. 🌱",
+        "Her sabah seninle uyanma fikri bile huzur verici. ☕", "Sen benim kalbimdeki en derin izsin. 👣",
+        "Seni sevmekten asla vazgeçmeyeceğim. 🛡️", "Sen benim bir tanemsin. ☝️", "Hayatıma dokunduğun an her şey güzelleşti. 🪄",
+        "Seninle her anım bir ömre bedel. ⏳", "Aşkın benim pusulam. 🧭", "Sen benim her şeyimsin. 🗝️",
+        "Gözlerindeki ışık yolumu aydınlatıyor. 💡", "Seninle gülmek en büyük mutluluğum. 😂",
+        "Sen benim en güzel şiirimsin. ✍️", "Kalbimin ritmini değiştiren tek sensin. 🥁",
+        "Seni sevmek hayatımın en doğru kararı. ✅", "Sen benim nefesimsin. 💨", "Seninle olmak bir rüya gibi. ☁️",
+        "Hayallerimin ötesindeki sevgilimsin. 🚀", "Aşkın bana her şeyi unutturuyor. 🧠",
+        "Sen benim bitmeyen şarkımsın. 🎶", "Seninle geçen ömür en büyük ödülüm. 🏆",
+        "Sen benim dünyamsın. 🗺️", "Gülüşünde huzur bulduğum tek insansın. 😊", "Sana olan aşkım her an katlanıyor. 📂",
+        "Sen benim en kıymetlimsin. 👑", "Hayatımın en güzel hikayesi seninle başladı. 🎬",
+        "Sen benim ruhumun aynasısın. 🪞", "Seni her halinle seviyorum. 💯", "Sen benim canımsın. 🩸",
+        "Yanında zaman dursun istiyorum. ⏱️", "Aşkın kalbimde çiçekler açtırıyor. 🌸",
+        "Sen benim sol yanım, en güzel yanımsın. 👈", "Dünyayı seninle keşfetmek istiyorum. 🌍",
+        "Sen benim en büyük aşkımsın. 🐳", "Seni düşünmek bile içimi ısıtıyor. 🧣",
+        "Sen benim cennetimsin. 👼", "Kalbimdeki yerin asla dolmayacak. 🕳️", "Sen benim hayat ışığımsın. 🔦",
+        "Seni sevmek bir ayrıcalık. 🎫", "Seninle her şey mümkün. 🌟", "Sen benim can yoldaşımsın. 👯",
+        "Aşkın beni tamamlıyor. 🌓", "Sen benim en güzel gerçeğimsin. 🦄", "Seninle bir ömür yetmez bana. ♾️",
+        "Sen benim tek gerçeğimsin. 📍", "Aşkınla dünyam değişti. 🌏", "Sen benim baharımsın. 🌷",
+        "Seni sevmek en güzel duygu. 🧸", "Sen benim hayatımın başrolüsün. 🎭", "Seninle her şey daha anlamlı. 🕯️",
+        "Aşkın içimi titretiyor. 💓", "Sen benim her halimsin. ☯️", "Seni çok seviyorum. 💞",
+        "Sen benim ömrümsün. 🕰️", "Seninle her gün yeni bir macera. 🛶", "Aşkımız ölümsüz olsun. 🧛‍♂️❤️",
+        "Sen benim kalbimdir. 🫀", "Seni seviyorum, hem de çok. 💖✨"
+    ];
+
+    const randomIndex = Math.floor(Math.random() * words.length);
+    const display = document.getElementById('love-text-display');
+    
+    // Mesajı Kutuda Göster
+    if(display) {
+        display.style.opacity = '0';
+        setTimeout(() => {
+            display.innerText = words[randomIndex];
+            display.style.opacity = '1';
+        }, 200);
+    }
+
+    // KONFETİLERİ PATLAT
+    createConfetti();
+}
+
+function createConfetti() {
+    const colors = ['#ec4899', '#db2777', '#f472b6', '#ffffff', '#ffd700'];
+    const shapes = ['❤️', '✨', '💖', '⭐', '🌸'];
+
+    for (let i = 0; i < 35; i++) {
+        const confetti = document.createElement('div');
+        confetti.innerText = shapes[Math.floor(Math.random() * shapes.length)];
+        confetti.style.position = 'fixed';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.top = '-5vh';
+        confetti.style.color = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.fontSize = (Math.random() * 15 + 15) + 'px';
+        confetti.style.zIndex = '10001';
+        confetti.style.pointerEvents = 'none';
+        confetti.style.transition = `transform ${Math.random() * 2 + 3}s linear, opacity ${Math.random() * 2 + 3}s linear`;
+        
+        document.body.appendChild(confetti);
+
+        setTimeout(() => {
+            confetti.style.transform = `translateY(110vh) translateX(${Math.random() * 200 - 100}px) rotate(${Math.random() * 360}deg)`;
+            confetti.style.opacity = '0';
+        }, 10);
+
+        setTimeout(() => { confetti.remove(); }, 5000);
+    }
+}
+
+  function initMap() {
+    if (mainMap) return;
+    
+    // Bursa merkezli başlangıç görünümü
+    mainMap = L.map('map', { zoomControl: false }).setView([40.1825, 29.0535], 14);
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mainMap);
+
+    // Yeni Koordinatlar: Bursa Ortapazar ve Bursa İvazpaşa
+    const bursa = [40.1797, 29.0547]; // İvazpaşa (Buğra)
+    const odemis = [40.1855, 29.0526]; // Ortapazar (Melis)
+    
+    // Markerlar
+    L.marker(bursa).addTo(mainMap).bindPopup('<b>bugra</b><br>İvazpaşa 🐂');
+    L.marker(odemis).addTo(mainMap).bindPopup('<b>melis</b><br>Ortapazar 🐺');
+
+    // Çizgi ve Kalp İkonu (Orta nokta hesaplaması)
+    const midLat = (bursa[0] + odemis[0]) / 2;
+    const midLon = (bursa[1] + odemis[1]) / 2;
+    
+    // Bağlantı çizgisi (Kesikli çizgi)
+    L.polyline([bursa, odemis], { color: '#3b82f6', weight: 3, opacity: 0.7, dashArray: '10, 10' }).addTo(mainMap);
+    
+    // KM bilgisini 2,6 KM olarak güncelledik
+    const heartIcon = L.divIcon({ 
+        className: 'custom-div-icon', 
+        html: `<div style="text-align: center;"><span class="beating-heart">❤️</span><br><span class="map-label">2,6 KM</span></div>`, 
+        iconSize: [80, 60], 
+        iconAnchor: [40, 30] 
+    });
+    
+    L.marker([midLat, midLon], { icon: heartIcon }).addTo(mainMap);
+}
+ async function syncVeri() {
+    try {
+        // 't=' parametresi Google'ın eski veriyi (cache) vermesini engeller, hızı artırır
+        const response = await fetch(SCRIPT_URL + "?action=read&t=" + new Date().getTime());
+        const remoteData = await response.json();
+        
+        if(!remoteData) return;
+
+        const stringified = JSON.stringify(remoteData);
+        // Veri değişmediyse boşuna ekranı yenileyip tarayıcıyı yorma
+        if(stringified === lastSyncData) return;
+        lastSyncData = stringified;
+        
+        // NOTLAR GÜNCELLE
+        if(remoteData.notes) { 
+            localStorage.setItem('notes', JSON.stringify(remoteData.notes)); 
+            displayLogs(); 
+        }
+
+        // PLANLAR GÜNCELLE
+        if(remoteData.goals) { 
+            localStorage.setItem('goals', JSON.stringify(remoteData.goals)); 
+            displayGoals(); 
+        }
+
+        // SOHBET GÜNCELLE
+        if(remoteData.chats) { 
+            localStorage.setItem('chats', JSON.stringify(remoteData.chats)); 
+            displayChats(); 
+        }
+
+        // ŞARKILAR GÜNCELLE
+        if(remoteData.songs) {
+            localStorage.setItem('song_history', JSON.stringify(remoteData.songs));
+            remoteData.songs.forEach(s => { 
+                if(s.user && s.link) localStorage.setItem('song_' + s.user, s.link); 
+            });
+            loadSongs();
+            displaySongHistory();
+        }
+
+        // MODLAR GÜNCELLE
+        if(remoteData.moods) {
+            const now = new Date().getTime();
+            remoteData.moods.forEach(m => { 
+                const localTime = parseInt(localStorage.getItem('mood_time_' + m.user)) || 0;
+                // Sadece daha yeni olan mod bilgisini işle
+                if(m.mood && m.time >= localTime) { 
+                    localStorage.setItem('mood_' + m.user, m.mood); 
+                    localStorage.setItem('mood_time_' + m.user, m.time); 
+                }
+            });
+            updateMoodUI();
+        }
+    } catch(e) { 
+        console.warn("Senkronizasyon bekleniyor..."); 
+    }
+}
+
+        function toggleQuickMenu() {
+            const menu = document.getElementById('quickMenu');
+            menu.style.display = menu.style.display === 'grid' ? 'none' : 'grid';
+        }
+
+        function sendQuick(msg) {
+            document.getElementById('chatInput').value = msg;
+            sendChatMessage();
+            toggleQuickMenu();
+        }
+
+function sendChatMessage() {
+    const val = document.getElementById('chatInput').value.trim();
+    if(!val || !selectedUser) return;
+
+    const chatBox = document.getElementById('chatBox');
+    const now = Date.now(); 
+    const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }); // "22:15" gibi
+    const msgId = "msg-" + now;
+
+    // 1. ADIM: Ekrana ANINDA bas (Tarih eklendi)
+    const tempHtml = `
+        <div class="msg msg-${selectedUser}" id="${msgId}">
+            ${val}
+            <div style="font-size: 8px; opacity: 0.7; margin-top: 4px; text-align: right;">${timeStr}</div>
+        </div>`;
+    chatBox.innerHTML += tempHtml;
+    chatBox.scrollTop = chatBox.scrollHeight;
+    
+    document.getElementById('chatInput').value = "";
+
+    // 2. ADIM: Firebase'e gönder (Zaman bilgisini de ekledik)
+    db.ref('chats').push({
+        user: selectedUser,
+        msg: val,
+        time: now,
+        clock: timeStr // Saat bilgisini buraya ekledik
+    });
+
+    setTimeout(() => {
+        if(typeof sendToExcel === "function") sendToExcel(val, "Chat");
+    }, 2000);
+}
+
+        function setUser(name) {
+            selectedUser = name;
+            localStorage.setItem('active_user', name);
+            document.getElementById('identityOverlay').style.display = 'none';
+            document.getElementById('step1').classList.remove('hidden');
+            sendToExcel("Sisteme Giriş Yaptı", "Log");
+            displayChats();
+            displayLogs();
+            displayGoals();
+            loadSongs();
+        }
+function sendToExcel(mesaj, tip, ekVeri = "") {
+    const entry = { user: selectedUser, tip: tip, mesaj: mesaj, ek: ekVeri };
+    
+    // FETCH isteğini güncelledik
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify(entry)
+    }).then(() => {
+        console.log("Veri başarıyla buluta gönderildi.");
+    }).catch(err => console.error("Gönderim hatası:", err));
+}
+
+        function startReset() {
+            document.getElementById('step1').classList.add('hidden');
+            const term = document.getElementById('terminal');
+            term.classList.remove('hidden');
+            const lines = ["> Bağlantı kuruluyor...", "> Veriler senkronize ediliyor...", "> Sistem hazır."];
+            let i = 0;
+            const intv = setInterval(() => {
+                if(i < lines.length) { term.innerHTML += lines[i]+"<br>"; i++; }
+                else { clearInterval(intv); setTimeout(() => { term.classList.add('hidden'); document.getElementById('step3').classList.remove('hidden'); initMap(); }, 800); }
+            }, 600);
+        }
+
+   function startBirthdayTimers() {
+    // 225. satır civarı
+    updateWeather(); 
+    setInterval(updateWeather, 900000); // 15 dakikada bir otomatik günceller
+    
+    function updateTimer(targetMonth, targetDay, elementId) {
+        const now = new Date(); 
+        let year = now.getFullYear();
+        let bday = new Date(year, targetMonth - 1, targetDay);
+        if (now > bday) bday = new Date(year + 1, targetMonth - 1, targetDay);
+        const diff = bday - now;
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        document.getElementById(elementId).innerText = `${d}g ${h}s ${m}d ${s}s`;
+    }
+
+    // Tarihler güncellendi: Melis (7 Temmuz -> 7, 7), Buğra (24 Ağustos -> 8, 24)
+    setInterval(() => { 
+        updateTimer(7, 7, 'melisTimer'); 
+        updateTimer(8, 24, 'bugraTimer'); 
+    }, 1000);
+}
+
+        function updateMoodUI() {
+            document.querySelectorAll('.mood-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.user-tag').forEach(tag => tag.innerHTML = "");
+            const now = new Date().getTime();
+            const limit = 86400000;
+            ['melis', 'bugra'].forEach(u => {
+                const m = localStorage.getItem('mood_' + u);
+                const t = localStorage.getItem('mood_time_' + u);
+                if(m && t && (now - t < limit)) { 
+                    document.getElementById('m-' + m)?.classList.add('active');
+                    const tag = document.getElementById('tag-' + m);
+                    if(tag) tag.innerHTML += `<span class="${u === 'melis' ? 'tag-e' : 'tag-m'}">${u}</span>`;
+                }
+            });
+        }
+
+        function updateStreakUI() {
+            let streak = parseInt(localStorage.getItem('song_streak')) || 3;
+            document.getElementById('streakDisplay').innerText = `Güncel Seri 🔥 ${streak}`;
+        }
+
+        function updateSong() {
+            const val = document.getElementById('songInput').value;
+            if(!val.includes("track")) return;
+            
+            const now = new Date();
+            const todayStr = now.toDateString(); 
+            const lastUpdateDate = localStorage.getItem('last_song_date');
+            let streak = parseInt(localStorage.getItem('song_streak')) || 3;
+
+            if (lastUpdateDate !== todayStr) {
+                streak++;
+                localStorage.setItem('song_streak', streak);
+                localStorage.setItem('last_song_date', todayStr);
+                updateStreakUI();
+            }
+
+            localStorage.setItem('song_' + selectedUser, val);
+            loadSongs();
+            document.getElementById('songInput').value = "";
+            sendToExcel(val, "Şarkı", streak);
+        }
+
+        function loadSongs() {
+            ['melis', 'bugra'].forEach(u => {
+                const song = localStorage.getItem('song_' + u);
+                const slot = document.getElementById('spotify-' + u);
+                if(song && slot) {
+                    const parts = song.split("track/");
+                    if(parts.length > 1) {
+                        const sid = parts[1].split("?")[0];
+                        slot.innerHTML = `<iframe src="https://open.spotify.com/embed/track/${sid}" width="100%" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>`;
+                    }
+                }
+            });
+        }
+
+        function displaySongHistory() {
+            const history = JSON.parse(localStorage.getItem('song_history')) || [];
+            const container = document.getElementById('songHistory');
+            if(container) {
+                container.innerHTML = history.slice(0, 5).map(s => `<div class="song-history-item" onclick="window.open('${s.link}', '_blank')">🎵 ${s.user.toUpperCase()} paylaştı...</div>`).join('');
+            }
+        }
+function sendNote() {
+    const val = document.getElementById('noteInput').value.trim();
+    if(!val || !selectedUser) return;
+    
+    db.ref('notes').push({
+        user: selectedUser,
+        mesaj: val,
+        time: Date.now(),
+        tarih: new Date().toLocaleString('tr-TR')
+    });
+    
+    document.getElementById('noteInput').value = "";
+}
+
+        function displayLogs() {
+            const logs = JSON.parse(localStorage.getItem('notes')) || [];
+            const logList = document.getElementById('logList');
+            if(logList) {
+                logList.innerHTML = logs.map(l => `<div class="item-card"><b>${l.mesaj}</b> <span style="color:${l.user === 'melis' ? '#ec4899' : '#3b82f6'}; font-size:0.75rem;">(${l.user})</span></div>`).join('');
+            }
+        }
+
+        function addGoal() {
+            const val = document.getElementById('bucketInput').value;
+            if(!val) return;
+            const entry = { text: val, done: false, user: selectedUser };
+            const goals = JSON.parse(localStorage.getItem('goals')) || [];
+            goals.push(entry);
+            localStorage.setItem('goals', JSON.stringify(goals));
+            document.getElementById('bucketInput').value = "";
+            displayGoals();
+            sendToExcel(val, "Hedef");
+        }
+
+        function displayGoals() {
+            const goals = JSON.parse(localStorage.getItem('goals')) || [];
+            const bucketList = document.getElementById('bucketList');
+            if(bucketList) {
+                bucketList.innerHTML = goals.map((g, i) => `<div class="item-card"><input type="checkbox" ${g.done ? 'checked' : ''} onclick="toggleGoal(${i})"> ${g.text}</div>`).join('');
+            }
+        }
+
+        function toggleGoal(i) {
+            const goals = JSON.parse(localStorage.getItem('goals'));
+            goals[i].done = !goals[i].done;
+            localStorage.setItem('goals', JSON.stringify(goals));
+            displayGoals();
+            sendToExcel(goals[i].text, "Hedef-Tamamla", goals[i].done);
+        }
+
+        function copySong(u) {
+            const song = localStorage.getItem('song_' + u);
+            if(song) { navigator.clipboard.writeText(song); alert(`Kopyalandı!`); }
+        }
+
+function adminSisteminiAc() {
+    let id = prompt("ID Girin:");
+    let sifre = prompt("Şifre Girin:");
+
+    if (id === "bugra" && sifre === "9999") {
+        let islem = prompt("Ne yapmak istiyorsun?\n1: Çarpıları Aç/Kapat\n2: PROJELERİ SIFIRLA (Hedefler)\n3: HER ŞEYİ SİL (Tam Temizlik)");
+
+        if (islem === "1") {
+            document.body.classList.toggle('admin-active');
+            alert("Düzenleme modu değiştirildi.");
+        } 
+        else if (islem === "2") {
+            // SADECE PROJELERİ (HEDEFLERİ) SIFIRLAMA
+            if (confirm("Tüm planlar ve hedefleri silmek istediğine emin misin?")) {
+                // Firebase'den 'goals' dalını siler
+                db.ref('goals').remove().then(() => {
+                    // Tarayıcı hafızasındaki hedefleri temizler
+                    localStorage.removeItem('goals');
+                    alert("Tüm projeler ve hedefler sıfırlandı.");
+                    displayGoals(); // Ekranı günceller
+                });
+            }
+        }
+        else if (islem === "3") {
+            // TOPLU SİLME (TÜM VERİTABANI)
+            if (confirm("DİKKAT! Her şey silinecek. Emin misin?")) {
+                const refRoot = firebase.database().ref();
+                Promise.all([
+                    refRoot.child('chats').remove(),
+                    refRoot.child('notes').remove(),
+                    refRoot.child('memories').remove(),
+                    refRoot.child('goals').remove(),
+                    refRoot.child('moods').remove()
+                ]).then(() => {
+                    localStorage.clear();
+                    alert("Tüm sistem sıfırlandı.");
+                    location.reload();
+                });
+            }
+        }
+    } else {
+        alert("Hatalı giriş!");
+    }
+}
+
+// Tekli silme fonksiyonu (Çarpılara basınca çalışır)
+function directDelete(path, key) {
+    firebase.database().ref(path).child(key).remove()
+    .then(() => console.log("Silindi"))
+    .catch(e => alert("Hata: " + e.message));
+}
+
+// 2. SEVGİ SAYACI FONKSİYONU
+function sendLoveClick() {
+    showLoveWord(); // Mevcut konfeti ve mesaj fonksiyonun
+    sendToExcel("Kalp Atışı", "Sevgi_Click"); 
+}
+
+// 3. AKTİFLİK VE SÜRE TAKİBİ
+function updateMyStatus(status) {
+    sendToExcel(status, "Status_Update");
+}
+
+// Sayfa açıldığında aktif yap
+window.addEventListener('load', () => {
+    updateMyStatus("Aktif 🟢");
+});
+
+// Sayfa kapatıldığında süre hesapla ve deaktif yap
+window.addEventListener('beforeunload', () => {
+    let duration = Math.round((Date.now() - startTime) / 60000);
+    sendToExcel(`${duration} dk durdu`, "Session_End");
+    updateMyStatus("Deaktif 🔴");
+});
+
+// 4. VERİLERİ EKRANA BASAN syncVeri GÜNCELLEMESİ
+async function syncVeri() {
+    try {
+        const response = await fetch(SCRIPT_URL + "?action=read&t=" + Date.now());
+        const remoteData = await response.json();
+        if(!remoteData) return;
+
+        // Sevgi İstatistiklerini Güncelle
+        if(remoteData.loveStats) {
+            document.getElementById('love-stats').innerHTML = 
+                `melis: ${remoteData.loveStats.melis || 0} ❤️ bugra: ${remoteData.loveStats.bugra || 0}`;
+        }
+
+        // Aktiflik Durumlarını Güncelle
+        if(remoteData.userStatus) {
+            document.getElementById('status-melis').innerText = remoteData.userStatus.melis || "Bilinmiyor";
+            document.getElementById('status-bugra').innerText = remoteData.userStatus.bugra || "Bilinmiyor";
+        }
+
+        const stringified = JSON.stringify(remoteData);
+        if(stringified === lastSyncData) return;
+        lastSyncData = stringified;
+
+        // Diğer mevcut güncellemelerin (Chat, Notlar vb.) aynen devam etsin...
+        if(remoteData.chats) { localStorage.setItem('chats', JSON.stringify(remoteData.chats)); displayChats(); }
+        if(remoteData.notes) { localStorage.setItem('notes', JSON.stringify(remoteData.notes)); displayLogs(); }
+        // ...
+    } catch(e) { console.warn("Yenileniyor..."); }
+}
+
+// --- OTOMATİK BUTON EKLEME SİSTEMİ ---
+
+// Sohbetler için
+const originalDisplayChats = window.displayChats;
+window.displayChats = function() {
+    if(typeof originalDisplayChats === "function") originalDisplayChats();
+    if(document.body.classList.contains('admin-active')) {
+        document.querySelectorAll('.msg').forEach((msg, i) => {
+            if(!msg.querySelector('.admin-del')) {
+                const btn = document.createElement('button');
+                btn.innerHTML = '×';
+                btn.className = 'admin-del';
+                btn.style = "background:#ff4d4d; color:white; border:none; border-radius:4px; width:18px; height:18px; cursor:pointer; float:right; font-weight:bold; margin-left:5px;";
+                btn.onclick = (e) => { e.stopPropagation(); deleteItem('chats', i, displayChats); };
+                msg.prepend(btn);
+            }
+        });
+    }
+};
+
+// Notlar (Loglar) için
+const originalDisplayLogs = window.displayLogs;
+window.displayLogs = function() {
+    if(typeof originalDisplayLogs === "function") originalDisplayLogs();
+    if(document.body.classList.contains('admin-active')) {
+        document.querySelectorAll('#logList .item-card').forEach((item, i) => {
+            if(!item.querySelector('.admin-del')) {
+                const btn = document.createElement('button');
+                btn.innerHTML = 'SİL';
+                btn.className = 'admin-del';
+                btn.style = "background:#ff4d4d; color:white; border:none; border-radius:4px; padding:2px 8px; cursor:pointer; float:right; font-size:10px; font-weight:bold;";
+                btn.onclick = (e) => { e.stopPropagation(); deleteItem('notes', i, displayLogs); };
+                item.prepend(btn);
+            }
+        });
+    }
+};
+
+// Planlar (Hedefler) için
+const originalDisplayGoals = window.displayGoals;
+window.displayGoals = function() {
+    if(typeof originalDisplayGoals === "function") originalDisplayGoals();
+    if(document.body.classList.contains('admin-active')) {
+        document.querySelectorAll('#bucketList .item-card').forEach((item, i) => {
+            if(!item.querySelector('.admin-del')) {
+                const btn = document.createElement('button');
+                btn.innerHTML = 'SİL';
+                btn.className = 'admin-del';
+                btn.style = "background:#ff4d4d; color:white; border:none; border-radius:4px; padding:2px 8px; cursor:pointer; float:right; font-size:10px; font-weight:bold;";
+                btn.onclick = (e) => { e.stopPropagation(); deleteItem('goals', i, displayGoals); };
+                item.prepend(btn);
+            }
+        });
+    }
+};
+function updateFileName() {
+    const input = document.getElementById('memoryFile');
+    const display = document.getElementById('fileNameDisplay');
+    if (input.files.length > 0) display.innerText = "✅ " + input.files[0].name;
+}
+
+function saveMemory() {
+    const desc = document.getElementById('memoryDesc').value;
+    const link = document.getElementById('memoryLink').value;
+    const file = document.getElementById('memoryFile').files[0];
+
+    if (!selectedUser) { alert("Kim olduğunuzu seçin!"); return; }
+    if (!file && !link) { alert("Fotoğraf seçin veya URL girin!"); return; }
+
+    const memoryData = {
+        user: selectedUser,
+        description: desc || "",
+        date: new Date().toLocaleString('tr-TR'),
+        timestamp: Date.now()
+    };
+
+    const finalizeAndPush = (imgData) => {
+        memoryData.image = imgData;
+        db.ref('memories').push(memoryData).then(() => {
+            document.getElementById('memoryDesc').value = "";
+            document.getElementById('memoryLink').value = "";
+            document.getElementById('memoryFile').value = "";
+            document.getElementById('fileNameDisplay').innerText = "Dosya seçilmedi";
+        });
+    };
+
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 600; // 2'li görünüm için 600px yeterli
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                finalizeAndPush(canvas.toDataURL('image/jpeg', 0.6));
+            };
+        };
+        reader.readAsDataURL(file);
+    } else {
+        finalizeAndPush(link);
+    }
+}
+
+db.ref('memories').on('value', (snapshot) => {
+    const gallery = document.getElementById('memoryGallery');
+    if(!gallery) return;
+    gallery.innerHTML = "";
+    const data = snapshot.val();
+    if (data) {
+        // En yeni anı en üstte görünsün
+        Object.values(data).sort((a,b) => b.timestamp - a.timestamp).forEach(mem => {
+            const div = document.createElement('div');
+            // Kimin gönderdiğine göre özel sınıf ekliyoruz
+            div.className = `mem-bubble mem-${mem.user}`;
+            div.innerHTML = `
+                <img src="${mem.image}" class="mem-img" onclick="const w=window.open(); w.document.write('<img src='+this.src+' style=width:100%>');"
+                <div class="mem-footer" style="margin-top: 10px;">
+                    ${mem.description ? `<p class="mem-text" style="margin: 0 0 8px 0; color: #f1f5f9; font-size: 15px;">${mem.description}</p>` : ''}
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                        <span class="mem-user-name" style="font-weight: bold; font-size: 12px; color: #f43f5e;">👤 ${mem.user}</span>
+                        <span class="mem-time" style="color: #64748b; font-size: 10px;">📅 ${mem.date}</span>
+                    </div>
+                </div>
+            `;
+            gallery.appendChild(div);
+        });
+    }
+});
+// Onay sormadan direkt silen merkezi fonksiyon
+function direktSil(path, key) {
+    db.ref(path).child(key).remove()
+    .then(() => {
+        console.log(path + " içinden bir öğe başarıyla silindi.");
+    })
+    .catch((error) => {
+        console.error("Silme hatası:", error);
+    });
+}
+// MODLARI ANLIK GÜNCELLE
+db.ref('moods').on('value', (snapshot) => {
+    document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.user-tag').forEach(t => t.innerHTML = "");
+    snapshot.forEach(child => {
+        const u = child.key; const d = child.val();
+        if(d && (Date.now() - d.time < 86400000)) {
+            const btn = document.getElementById('m-'+d.mood);
+            if(btn) btn.classList.add('active');
+            const tag = document.getElementById('tag-'+d.mood);
+            if(tag) {
+                const color = u === 'melis' ? '#ec4899' : '#3b82f6';
+                tag.innerHTML += `<span style="color:${color}; font-weight:bold; font-size:10px; margin-right:5px;">${u.toUpperCase()}</span>`;
+            }
+        }
+    });
+});
+
+// CHAT GÖNDERME FONKSİYONU
+function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const user = localStorage.getItem('active_user');
+    if(!input.value.trim() || !user) return;
+    db.ref('chats').push({
+        user: user,
+        msg: input.value,
+        time: Date.now(),
+        clock: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    });
+    input.value = "";
+}
+// MESAJLARI EKRANA BASAN TEK VE ASIL FONKSİYON
+db.ref('chats').limitToLast(20).on('child_added', (snapshot) => {
+    const data = snapshot.val();
+    const key = snapshot.key; // Mesajın benzersiz kimliği
+    const chatBox = document.getElementById('chatBox');
+    
+    if(chatBox) {
+        // Eğer mesaj zaten ekrandaysa (ID kontrolü), tekrar ekleme!
+        if(document.getElementById('msg-' + key)) return;
+
+        const div = document.createElement('div');
+        div.id = 'msg-' + key; // Her mesaja benzersiz ID veriyoruz
+        div.className = `msg msg-${data.user}`;
+        div.style.padding = "8px 12px";
+        div.style.borderRadius = "10px";
+        div.style.maxWidth = "80%";
+        div.style.color = "white";
+        div.style.marginBottom = "5px";
+        div.style.background = data.user === 'melis' ? '#ec4899' : '#3b82f6';
+        div.style.alignSelf = data.user === 'melis' ? 'flex-start' : 'flex-end';
+        
+        // Admin modu için silme butonu (varsa)
+        let deleteBtn = document.body.classList.contains('admin-active') 
+            ? `<button onclick="direktSil('chats', '${key}')" style="background:none; border:none; color:white; cursor:pointer; float:left; margin-right:5px;">×</button>` 
+            : '';
+
+        div.innerHTML = `${deleteBtn} ${data.msg} <div style="font-size:8px; opacity:0.6; text-align:right;">${data.clock || ''}</div>`;
+        
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+});
+// Fotoğrafı normal boyutta açan fonksiyon
+function openModal(src) {
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalContent');
+    
+    if(modal && modalImg) {
+        modal.style.display = "flex"; // Fotoğrafı ekranın ortasına hizalar
+        modalImg.src = src; // Tıklanan fotoğrafın adresini yükler
+        
+        // Fotoğrafın ekranı kaplamaması için genişliğini ayarla
+        modalImg.style.maxWidth = "85%";
+        modalImg.style.maxHeight = "80vh";
+        modalImg.style.width = "auto";
+        modalImg.style.height = "auto";
+    }
+}
+
+// Modal penceresini kapatmak için (Dışarı tıklayınca kapanır)
+window.onclick = function(event) {
+    const modal = document.getElementById('imageModal');
+    if (event.target == modal) {
+        modal.style.display = "none";
+    }
+}
+// --- SPOTIFY SİSTEMİ TAMİR EDİLMİŞ VERSİYON ---
+
+// 1. Şarkıları Anlık Dinle (Diğer kişi eklediği an senin ekranında değişir)
+db.ref('spotify_songs').on('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        const users = ['melis', 'bugra'];
+        users.forEach(u => {
+            const box = document.getElementById(`spotify-${u}`);
+            if (data[u] && box) {
+                let rawLink = data[u];
+                let spotifyId = "";
+                let type = "track"; // Varsayılan
+
+                // Link tipini ve ID'yi belirle
+                if (rawLink.includes("track/")) {
+                    spotifyId = rawLink.split("track/")[1].split("?")[0];
+                    type = "track";
+                } else if (rawLink.includes("playlist/")) {
+                    spotifyId = rawLink.split("playlist/")[1].split("?")[0];
+                    type = "playlist";
+                }
+
+                if (spotifyId) {
+                    box.innerHTML = `<iframe src="https://open.spotify.com/embed/${type}/${spotifyId}" width="100%" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>`;
+                }
+            }
+        });
+    }
+});
+
+// 2. Şarkı Paylaşma Fonksiyonu (Yazı uyarısı kaldırıldı)
+function updateSong() {
+    const input = document.getElementById('songInput');
+    const link = input.value.trim();
+    const currentUser = localStorage.getItem('active_user'); // 'melis' veya 'bugra'
+
+    if (!link.includes('spotify.com')) {
+        return; // Geçersiz linkse hiçbir şey yapma
+    }
+
+    if (!currentUser) {
+        console.error("Kullanıcı seçili değil!");
+        return;
+    }
+
+    // Firebase'i güncelle (Alert/Uyarı kaldırıldı)
+    db.ref('spotify_songs').update({
+        [currentUser]: link
+    }).then(() => {
+        input.value = ""; // Sadece kutuyu temizle
+    }).catch(err => {
+        console.error("Firebase Hatası:", err);
+    });
+}
+function listenMoods() {
+    db.ref('moods').on('value', (snapshot) => {
+        const data = snapshot.val();
+        const now = Date.now();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+
+        const users = ['melis', 'bugra'];
+        
+        users.forEach(user => {
+            const userMoodData = data ? data[user] : null;
+            const moodDisplay = document.getElementById(user + 'CurrentMood'); // HTML'de bu ID'li yerler olmalı
+            
+            if (userMoodData && (now - userMoodData.timestamp < twentyFourHours)) {
+                // Eğer 24 saat geçmemişse modu göster
+                if (moodDisplay) moodDisplay.innerText = userMoodData.mood;
+            } else {
+                // 24 saat geçmişse veya mod yoksa boş göster
+                if (moodDisplay) moodDisplay.innerText = "Mod Seçilmedi 😶";
+            }
+        });
+    });
+}
+
+// Sayfa yüklendiğinde izlemeye başla
+listenMoods();
+    </script>
+</body>
+</html>
+
